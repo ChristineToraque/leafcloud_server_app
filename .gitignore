@@ -1,0 +1,37 @@
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE configuration files
+.idea/
+.vscode/
+
+# Log files
+*.log
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+.coverage
+.coverage.*
+.pytest_cache/
+htmlcov/
+
+# Build and distribution artifacts
+build/
+dist/
+*.egg-info/
+
+# alembic temp file
+.alembic-autogen-runner.lock
