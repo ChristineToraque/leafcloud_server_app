@@ -35,3 +35,6 @@ dist/
 
 # alembic temp file
 .alembic-autogen-runner.lock
+
+# Alembic config file (contains secrets)
+alembic.ini
