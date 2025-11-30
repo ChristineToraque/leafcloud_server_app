@@ -49,14 +49,18 @@ Before you begin, ensure you have the following installed:
 
 2.  **Configure Database URL:**
 
-    Open `alembic.ini` and locate the `sqlalchemy.url` line. Update it with your local database credentials:
+    Create a copy of the example configuration file and name it `alembic.ini`.
+
+    ```bash
+    cp alembic.ini.example alembic.ini
+    ```
+
+    Now, open the new `alembic.ini` file and update the `sqlalchemy.url` line with your database credentials:
 
     ```ini
     # alembic.ini
     sqlalchemy.url = postgresql://<username>:<password>@localhost/leafcloud
     ```
-
-    *Note: Replace `<username>` and `<password>` with your actual PostgreSQL credentials.*
 
 3.  **Run Migrations:**
 
