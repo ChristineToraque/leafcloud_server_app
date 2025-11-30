@@ -1,9 +1,14 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from enum import Enum
 from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+
+from database import get_db
+from models import Reading
 
 # --- 1. Pydantic Models (Data Schemas) ---
 # These models define the *exact* structure of your JSON responses.
@@ -63,6 +68,20 @@ class HistoryResponse(BaseModel):
     query_range: str
     data_points: List[HistoryDataPoint]
 
+# Input model for creating a new reading
+class ReadingCreate(BaseModel):
+    timestamp: datetime
+    plant_id: str
+    lettuce_image_url: str
+    # Sensors
+    ec: float
+    ph: float
+    temp_c: float
+    # Predictions
+    n_ppm: float
+    p_ppm: float
+    k_ppm: float
+
 # --- 2. FastAPI App Instance ---
 app = FastAPI(
     title="LEAFCLOUD API",
@@ -71,50 +90,91 @@ app = FastAPI(
 )
 
 # --- 3. API Endpoints ---
+@app.post(
+    "/api/v1/readings",
+    response_model=ReadingCreate,
+    summary="Add a New Sensor Reading"
+)
+async def create_reading(reading: ReadingCreate, db: Session = Depends(get_db)):
+    """
+    Ingests a new sensor reading and saves it to the database.
+    """
+    db_reading = Reading(
+        timestamp=reading.timestamp,
+        plant_id=reading.plant_id,
+        lettuce_image_url=reading.lettuce_image_url,
+        ec=reading.ec,
+        ph=reading.ph,
+        temp_c=reading.temp_c,
+        n_ppm=reading.n_ppm,
+        p_ppm=reading.p_ppm,
+        k_ppm=reading.k_ppm
+    )
+    db.add(db_reading)
+    db.commit()
+    db.refresh(db_reading)
+    return reading
+
 @app.get(
     "/api/v1/readings/latest",
     response_model=LatestReadingResponse,
     summary="Get Latest Sensor Reading"
 )
-
-async def get_latest_reading():
+async def get_latest_reading(db: Session = Depends(get_db)):
     """
     Retrieves the single most recent reading from the hydroponics system.
     This provides all data needed for the main dashboard.
     """
-    # --- This is your "dummy" data ---
-    # In the future, you will replace this by fetching data
-    # from your database (e.g., Firestore or PostgreSQL).
-    dummy_data = {
-      "timestamp": "2025-11-16T10:30:01Z",
-      "plant_id": "bucket_1_lettuce",
-      "lettuce_image_url": "https://placehold.co/600x400/5B9C4A/FFFFFF?text=Lettuce+Leaf\n(img_12345.jpg)",
-      "sensors": {
-        "ec": 790.5,
-        "ph": 6.4,
-        "temp_c": 25.1
-      },
-      "predictions": {
-        "n_ppm": 139.4,
-        "p_ppm": 46.5,
-        "k_ppm": 185.8
-      },
-      "status": {
-        "n_status": "low",
-        "p_status": "ok",
-        "k_status": "ok",
-        "overall_status": "warning"
-      },
-      "recommendation": "Nitrogen is low. Consider adding 10ml of 'Grow' solution."
+    latest_reading = db.query(Reading).order_by(desc(Reading.timestamp)).first()
+
+    if not latest_reading:
+        raise HTTPException(status_code=404, detail="No readings found")
+
+    # Determine status (Mock logic for now - ideally this comes from a utility or config)
+    def get_status(value, optimal):
+        if value < optimal * 0.9: return NutrientStatus.low
+        if value > optimal * 1.1: return NutrientStatus.high
+        return NutrientStatus.ok
+
+    # Optimal values (example)
+    n_status = get_status(latest_reading.n_ppm, 150.0)
+    p_status = get_status(latest_reading.p_ppm, 50.0)
+    k_status = get_status(latest_reading.k_ppm, 200.0)
+    
+    overall_status = OverallStatus.ok
+    if any(s != NutrientStatus.ok for s in [n_status, p_status, k_status]):
+        overall_status = OverallStatus.warning
+        # Simple logic: if any are way off, danger (omitted for brevity)
+
+    return {
+        "timestamp": latest_reading.timestamp,
+        "plant_id": latest_reading.plant_id,
+        "lettuce_image_url": latest_reading.lettuce_image_url,
+        "sensors": {
+            "ec": latest_reading.ec,
+            "ph": latest_reading.ph,
+            "temp_c": latest_reading.temp_c
+        },
+        "predictions": {
+            "n_ppm": latest_reading.n_ppm,
+            "p_ppm": latest_reading.p_ppm,
+            "k_ppm": latest_reading.k_ppm
+        },
+        "status": {
+            "n_status": n_status,
+            "p_status": p_status,
+            "k_status": k_status,
+            "overall_status": overall_status
+        },
+        "recommendation": "System is running optimally." if overall_status == OverallStatus.ok else "Check nutrient levels."
     }
-    return dummy_data
 
 @app.get(
     "/api/v1/readings/history",
     response_model=HistoryResponse,
     summary="Get Historical Sensor Readings"
 )
-async def get_history(range: str = "7d"):
+async def get_history(range: str = "7d", db: Session = Depends(get_db)):
     """
     Retrieves a list of historical readings for a specified time range.
     Used to populate charts in the app.
@@ -122,46 +182,36 @@ async def get_history(range: str = "7d"):
     Query Parameters:
     - **range**: The time range (e.g., '24h', '7d', '30d').
     """
-    # --- This is your "dummy" data ---
-    # In the future, you will query your database based on the 'range'
-    dummy_data = {
-      "query_range": range, # Use the 'range' parameter from the URL
-      "data_points": [
-        {
-          "timestamp": "2025-11-16T10:30:00Z",
-          "n_ppm": 139.4,
-          "p_ppm": 46.5,
-          "k_ppm": 185.8,
-          "ec": 790.5,
-          "ph": 6.4
-        },
-        {
-          "timestamp": "2025-11-16T09:30:00Z",
-          "n_ppm": 141.2,
-          "p_ppm": 47.1,
-          "k_ppm": 187.1,
-          "ec": 800.0,
-          "ph": 6.3
-        },
-        {
-          "timestamp": "2025-11-16T08:30:00Z",
-          "n_ppm": 142.1,
-          "p_ppm": 47.2,
-          "k_ppm": 188.0,
-          "ec": 805.0,
-          "ph": 6.3
-        },
-        {
-          "timestamp": "2025-11-16T07:30:00Z",
-          "n_ppm": 145.0,
-          "p_ppm": 48.0,
-          "k_ppm": 190.0,
-          "ec": 810.0,
-          "ph": 6.2
-        }
-      ]
+    
+    # Calculate cutoff time
+    now = datetime.utcnow()
+    if range == "24h":
+        cutoff = now - timedelta(hours=24)
+    elif range == "7d":
+        cutoff = now - timedelta(days=7)
+    elif range == "30d":
+        cutoff = now - timedelta(days=30)
+    else:
+        # Default to 7d if invalid or unspecified
+        cutoff = now - timedelta(days=7)
+
+    readings = db.query(Reading).filter(Reading.timestamp >= cutoff).order_by(Reading.timestamp.asc()).all()
+
+    data_points = []
+    for r in readings:
+        data_points.append({
+            "timestamp": r.timestamp,
+            "n_ppm": r.n_ppm,
+            "p_ppm": r.p_ppm,
+            "k_ppm": r.k_ppm,
+            "ec": r.ec,
+            "ph": r.ph
+        })
+
+    return {
+        "query_range": range,
+        "data_points": data_points
     }
-    return dummy_data
 
 # This is for running the file directly
 if __name__ == "__main__":
