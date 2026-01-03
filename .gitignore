@@ -38,3 +38,4 @@ dist/
 
 # Alembic config file (contains secrets)
 alembic.ini
+docs/LEAFCLOUD.pdf
