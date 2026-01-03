@@ -1,41 +1,36 @@
-# Python bytecode and cache
+# Python virtual environment
+# This is the folder created by `python -m venv venv`
+venv/
+.venv/
+env/
+
+# Python cache files
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Virtual Environments
-.env
-.venv
-env/
-venv/
-ENV/
-
-# IDE configuration files
+# IDE and editor files
 .idea/
 .vscode/
 
-# Log files
-*.log
-
-# OS-generated files
+# OS-specific files
 .DS_Store
-Thumbs.db
-
-# Coverage reports
-.coverage
-.coverage.*
-.pytest_cache/
-htmlcov/
 
 # Build and distribution artifacts
 build/
 dist/
 *.egg-info/
 
-# alembic temp file
-.alembic-autogen-runner.lock
+# Uvicorn/Starlette temp files
+.webassets-cache
 
-# Alembic config file (contains secrets)
-alembic.ini
-docs/LEAFCLOUD.pdf
+# Environment variables
+.env
+docs
+
+# Generated Artifacts
+images/
+mock_images/
+*.h5
+leafcloud-queries.dbcnb

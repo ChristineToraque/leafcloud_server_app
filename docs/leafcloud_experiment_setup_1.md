@@ -1,8 +1,13 @@
 [Previous](/docs/leafcloud_experiment_setup_0.md)
 
+> **⚠️ ARCHIVED: Phase 1 Schema**
+> This document describes the initial database redesign ("Phase 1"). The project has since evolved to the **Phase 2 Production Schema** (Version 2.0).
+> *   For the latest architecture, see [Setup 6](/docs/leafcloud_experiment_setup_6.md).
+> *   For the current database migration guide, see [Setup 2](/docs/leafcloud_experiment_setup_2.md).
+
 # Server & Database Redesign Log: LEAFCLOUD Phase 1
 
-**Date:** Saturday, January 3, 2026
+**Date:** Saturday, January 3, 2026<br>
 **Subject:** Refactoring Server and Database Schema for Experimental Alignment
 
 ## 1. Overview
