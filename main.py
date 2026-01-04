@@ -2,6 +2,7 @@ import os
 import shutil
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, Form, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 import numpy as np
@@ -28,6 +29,35 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# Ensure images directory exists and mount it to serve files via HTTP
+os.makedirs("images", exist_ok=True)
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
+def generate_recommendation(n, p, k, ph, ec):
+    """
+    Rule-based engine to convert sensor/AI data into actionable advice.
+    """
+    # Priority 1: pH Lockout (Critical)
+    if ph < 5.5 or ph > 7.0:
+        return "pH is out of range. Adjust to 5.8-6.5 immediately. Do not add fertilizer yet."
+
+    # Priority 2: Nutrient Deficiency (Based on AI NPK)
+    if n < 100:
+        return "Nitrogen levels low. Add Calcium Nitrate to reservoir."
+    if p < 30:
+        return "Phosphorus levels low. Add Monopotassium Phosphate (MKP)."
+    if k < 150:
+        return "Potassium levels low. Add Potassium Sulfate."
+
+    # Priority 3: General EC Warning
+    if ec < 0.8: # Assuming EC is in mS/cm (800 µS/cm)
+        return "Solution is too weak. Add balanced nutrient mix."
+    if ec > 2.5: # 2500 µS/cm
+        return "Nutrient burn risk. Add fresh water to dilute."
+
+    # Priority 4: Optimal
+    return "System healthy. No action required."
+
 # --- 2. ENDPOINT FOR IOT (Raspberry Pi uses this) ---
 @app.post("/iot/upload_data/")
 async def upload_from_iot(
@@ -42,7 +72,7 @@ async def upload_from_iot(
     os.makedirs("images", exist_ok=True)
     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{image.filename}"
     file_path = os.path.join("images", filename)
-    
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
 
@@ -69,7 +99,7 @@ async def upload_from_iot(
 
     # D. Run AI (Server-Side Processing)
     predicted_n, predicted_p, predicted_k = 0.0, 0.0, 0.0
-    
+
     if model:
         try:
             img = Image.open(file_path).convert('RGB').resize((224, 224))
@@ -110,8 +140,20 @@ def get_dashboard_data(db: Session = Depends(get_db)):
     # Accessing via relationship
     reading = latest.daily_reading
 
+    # Generate actionable advice
+    recommendation = generate_recommendation(
+        latest.predicted_n,
+        latest.predicted_p,
+        latest.predicted_k,
+        reading.ph,
+        reading.ec
+    )
+
     return {
         "timestamp": latest.prediction_date,
+        "status": "Optimal" if latest.predicted_n > 100 else "Deficiency Detected",
+        "recommendation": recommendation,
+        "image_url": reading.image_path.replace("\\", "/") if reading.image_path else None,
         "sensors": {
             "ph": reading.ph,
             "ec": reading.ec,
@@ -121,8 +163,7 @@ def get_dashboard_data(db: Session = Depends(get_db)):
             "Nitrogen": latest.predicted_n,
             "Phosphorus": latest.predicted_p,
             "Potassium": latest.predicted_k
-        },
-        "status": "Optimal" if latest.predicted_n > 100 else "Deficiency Detected"
+        }
     }
 
 @app.get("/app/history/")
