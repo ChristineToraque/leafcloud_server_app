@@ -10,9 +10,15 @@ from PIL import Image
 
 from database import get_db, engine, Base
 import models
+from pydantic import BaseModel
 
 # Ensure tables exist
 Base.metadata.create_all(bind=engine)
+
+# --- Auth Models ---
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 # Load AI Brain (Mock loader for now if file doesn't exist)
 try:
@@ -32,6 +38,23 @@ app = FastAPI(
 # Ensure images directory exists and mount it to serve files via HTTP
 os.makedirs("images", exist_ok=True)
 app.mount("/images", StaticFiles(directory="images"), name="images")
+
+# --- 1. AUTHENTICATION ENDPOINT ---
+@app.post("/auth/login")
+def login(request: LoginRequest):
+    """
+    Simple authentication endpoint for the mobile app prototype.
+    Currently uses hardcoded credentials.
+    """
+    # In a real app, verify against a Users table with hashed passwords
+    if request.email == "admin@leafcloud.com" and request.password == "admin":
+        return {
+            "status": "success",
+            "token": "demo-access-token-xyz-789", 
+            "message": "Login successful"
+        }
+    
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 def generate_recommendation(n, p, k, ph, ec):
     """
@@ -56,7 +79,7 @@ def generate_recommendation(n, p, k, ph, ec):
         return "Nutrient burn risk. Add fresh water to dilute."
 
     # Priority 4: Optimal
-    return "System healthy. No action required."
+    return "Lettuce growth is optimal. No action required."
 
 # --- 2. ENDPOINT FOR IOT (Raspberry Pi uses this) ---
 @app.post("/iot/upload_data/")
@@ -197,6 +220,67 @@ def get_history(limit: int = 30, db: Session = Depends(get_db)):
         })
 
     return response_data
+
+@app.get("/app/alerts/")
+def get_alerts(limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Retrieves a list of proactive alerts based on historical data.
+    Used to populate the 'Notifications' screen in the app.
+    """
+    # 1. Fetch recent history
+    history = db.query(models.DailyReading, models.NPKPrediction)\
+        .join(models.NPKPrediction, models.DailyReading.id == models.NPKPrediction.daily_reading_id)\
+        .order_by(models.DailyReading.timestamp.desc())\
+        .limit(limit)\
+        .all()
+
+    alerts = []
+
+    # 2. Scan for issues
+    for reading, prediction in history:
+        # Check pH (Critical)
+        if reading.ph < 5.5 or reading.ph > 7.0:
+            alerts.append({
+                "timestamp": reading.timestamp,
+                "severity": "critical",
+                "message": f"pH Lockout detected ({reading.ph}). Nutrients unavailable."
+            })
+        
+        # Check EC (Warning)
+        if reading.ec < 0.8:
+            alerts.append({
+                "timestamp": reading.timestamp,
+                "severity": "warning",
+                "message": f"Nutrient solution too weak (EC {reading.ec})."
+            })
+        elif reading.ec > 2.5:
+            alerts.append({
+                "timestamp": reading.timestamp,
+                "severity": "critical",
+                "message": f"Nutrient burn risk! EC is extremely high ({reading.ec})."
+            })
+
+        # Check NPK (Deficiencies)
+        if prediction.predicted_n < 100:
+            alerts.append({
+                "timestamp": reading.timestamp,
+                "severity": "warning",
+                "message": "Nitrogen level is low."
+            })
+        if prediction.predicted_p < 30:
+            alerts.append({
+                "timestamp": reading.timestamp,
+                "severity": "warning",
+                "message": "Phosphorus deficiency likely."
+            })
+        if prediction.predicted_k < 150:
+            alerts.append({
+                "timestamp": reading.timestamp,
+                "severity": "warning",
+                "message": "Potassium level is below optimal."
+            })
+
+    return alerts
 
 if __name__ == "__main__":
     import uvicorn
